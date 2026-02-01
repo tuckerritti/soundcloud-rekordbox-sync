@@ -494,6 +494,65 @@ def ingest(
 
 
 @app.command()
+def relocate(
+    root: Annotated[
+        Optional[Path],
+        typer.Option("--root", "-r", help="Root directory (auto-detected if not set)"),
+    ] = None,
+) -> None:
+    """Update database paths after moving the sync directory."""
+    config = get_config(root)
+    current_root = str(config.root)
+
+    with db.connect(config.db_path) as conn:
+        # Find old root from existing paths
+        sample = conn.execute(
+            "SELECT canonical_path FROM tracks WHERE canonical_path IS NOT NULL LIMIT 1"
+        ).fetchone()
+
+        if not sample:
+            console.print("[yellow]No tracks with paths to update.[/yellow]")
+            return
+
+        old_path = sample[0]
+        # Extract root: everything before /tracks/
+        if "/tracks/" not in old_path:
+            console.print("[red]Could not detect old root from paths.[/red]")
+            raise typer.Exit(1)
+
+        old_root = old_path.split("/tracks/")[0]
+
+        if old_root != current_root:
+            console.print(f"Old root: {old_root}")
+            console.print(f"New root: {current_root}")
+
+            # Update tracks.canonical_path
+            tracks_updated = conn.execute(
+                "UPDATE tracks SET canonical_path = REPLACE(canonical_path, ?, ?) "
+                "WHERE canonical_path LIKE ?",
+                (old_root, current_root, f"{old_root}%"),
+            ).rowcount
+
+            # Update file_index.path
+            files_updated = conn.execute(
+                "UPDATE file_index SET path = REPLACE(path, ?, ?) "
+                "WHERE path LIKE ?",
+                (old_root, current_root, f"{old_root}%"),
+            ).rowcount
+
+            console.print(f"\n[green]Updated {tracks_updated} track paths[/green]")
+            console.print(f"[green]Updated {files_updated} file index paths[/green]")
+        else:
+            console.print("[green]Paths already match current root.[/green]")
+
+    # Re-export XML with new paths
+    from sc2rb.rekordbox.xml_writer import export_rekordbox_xml
+    console.print("\nRe-exporting Rekordbox XML...")
+    export_rekordbox_xml(config)
+    console.print(f"[green]Exported to {config.rekordbox_xml_path}[/green]")
+
+
+@app.command()
 def doctor(
     root: Annotated[
         Optional[Path],
