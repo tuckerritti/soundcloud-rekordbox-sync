@@ -322,3 +322,80 @@ def get_sync_stats(conn: sqlite3.Connection) -> dict:
         "failed": failed,
         "playlists": playlists,
     }
+
+
+# --- Deletion queries ---
+
+
+def get_orphaned_tracks(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    """Get tracks not in any playlist."""
+    return conn.execute(
+        """
+        SELECT * FROM tracks
+        WHERE track_urn NOT IN (SELECT track_urn FROM playlist_tracks)
+        """
+    ).fetchall()
+
+
+def get_tracks_only_in_playlists(
+    conn: sqlite3.Connection,
+    playlist_urns: list[str],
+) -> list[sqlite3.Row]:
+    """Get tracks ONLY in given playlists (not in any other)."""
+    if not playlist_urns:
+        return []
+    placeholders = ",".join("?" * len(playlist_urns))
+    return conn.execute(
+        f"""
+        SELECT * FROM tracks
+        WHERE track_urn IN (
+            SELECT track_urn FROM playlist_tracks WHERE playlist_urn IN ({placeholders})
+        )
+        AND track_urn NOT IN (
+            SELECT track_urn FROM playlist_tracks WHERE playlist_urn NOT IN ({placeholders})
+        )
+        """,
+        playlist_urns + playlist_urns,
+    ).fetchall()
+
+
+def delete_tracks(conn: sqlite3.Connection, track_urns: list[str]) -> None:
+    """Delete tracks and their playlist associations."""
+    if not track_urns:
+        return
+    placeholders = ",".join("?" * len(track_urns))
+    conn.execute(
+        f"DELETE FROM playlist_tracks WHERE track_urn IN ({placeholders})",
+        track_urns,
+    )
+    conn.execute(
+        f"DELETE FROM tracks WHERE track_urn IN ({placeholders})",
+        track_urns,
+    )
+
+
+def delete_playlists(conn: sqlite3.Connection, playlist_urns: list[str]) -> None:
+    """Delete playlists and their track associations."""
+    if not playlist_urns:
+        return
+    placeholders = ",".join("?" * len(playlist_urns))
+    conn.execute(
+        f"DELETE FROM playlist_tracks WHERE playlist_urn IN ({placeholders})",
+        playlist_urns,
+    )
+    conn.execute(
+        f"DELETE FROM playlists WHERE playlist_urn IN ({placeholders})",
+        playlist_urns,
+    )
+
+
+def count_tracks_with_sha256(conn: sqlite3.Connection, sha256: str) -> int:
+    """Count tracks referencing a file hash."""
+    return conn.execute(
+        "SELECT COUNT(*) FROM tracks WHERE sha256 = ?", (sha256,)
+    ).fetchone()[0]
+
+
+def delete_file_index_entry(conn: sqlite3.Connection, sha256: str) -> None:
+    """Remove file from index."""
+    conn.execute("DELETE FROM file_index WHERE sha256 = ?", (sha256,))

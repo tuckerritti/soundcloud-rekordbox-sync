@@ -163,6 +163,22 @@ def sync(
     console.print(f"\nSyncing {len(playlists)} playlist(s)...")
 
     with db.connect(config.db_path) as conn:
+        # Identify deselected playlists (in DB, from SoundCloud, but not selected)
+        selected_urns = {pl["urn"] for pl in playlists}
+        all_urns = {pl["urn"] for pl in all_playlists}
+        existing_urns = {pl["playlist_urn"] for pl in db.get_all_playlists(conn)}
+        deselected_urns = list((existing_urns & all_urns) - selected_urns)
+
+        if deselected_urns:
+            tracks_to_delete = db.get_tracks_only_in_playlists(conn, deselected_urns)
+            if tracks_to_delete:
+                console.print(f"Removing {len(tracks_to_delete)} tracks from deselected playlists...")
+                _delete_track_files(conn, tracks_to_delete, verbose)
+                db.delete_tracks(conn, [t["track_urn"] for t in tracks_to_delete])
+            db.delete_playlists(conn, deselected_urns)
+            console.print(f"Removed {len(deselected_urns)} deselected playlist(s)")
+
+        # Sync selected playlists
         for playlist in playlists:
             if verbose:
                 console.print(f"  Syncing playlist: {playlist['title']}")
@@ -192,6 +208,13 @@ def sync(
 
             db.set_playlist_tracks(conn, playlist["urn"], track_urns)
 
+        # Clean up orphaned tracks
+        orphans = db.get_orphaned_tracks(conn)
+        if orphans:
+            console.print(f"Cleaning up {len(orphans)} orphaned tracks...")
+            _delete_track_files(conn, orphans, verbose)
+            db.delete_tracks(conn, [t["track_urn"] for t in orphans])
+
         stats = db.get_sync_stats(conn)
 
     console.print(f"\nSynced {stats['playlists']} playlists, {stats['total_tracks']} tracks")
@@ -208,6 +231,39 @@ def sync(
     console.print("\nExporting Rekordbox XML...")
     export_rekordbox_xml(config)
     console.print(f"[green]Exported to {config.rekordbox_xml_path}[/green]")
+
+
+def _delete_track_files(
+    conn,
+    tracks: list,
+    verbose: bool = False,
+) -> dict:
+    """Delete files for tracks, handling shared files safely."""
+    stats = {"deleted_files": 0, "skipped_shared": 0}
+
+    for track in tracks:
+        sha256 = track["sha256"]
+        canonical_path = track["canonical_path"]
+
+        if not canonical_path or not sha256:
+            continue
+
+        if db.count_tracks_with_sha256(conn, sha256) > 1:
+            stats["skipped_shared"] += 1
+            if verbose:
+                console.print(f"[dim]Skipping shared file: {canonical_path}[/dim]")
+            continue
+
+        path = Path(canonical_path)
+        if path.exists():
+            path.unlink()
+            stats["deleted_files"] += 1
+            if verbose:
+                console.print(f"[dim]Deleted: {canonical_path}[/dim]")
+
+        db.delete_file_index_entry(conn, sha256)
+
+    return stats
 
 
 @app.command()
