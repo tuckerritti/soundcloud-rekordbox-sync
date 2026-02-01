@@ -136,20 +136,23 @@ def sync(
             table.add_row(str(i), pl["title"], str(track_count))
 
         console.print(table)
-        console.print("\n[dim]Enter playlist numbers (comma-separated), 'all', or 'q' to quit[/dim]")
+        console.print("\n[dim]Enter playlist numbers to exclude (comma-separated), or press Enter to sync all[/dim]")
 
-        selection = Prompt.ask("Select playlists", default="all")
+        selection = Prompt.ask("Exclude playlists", default="")
 
         if selection.lower() == "q":
             return
 
-        if selection.lower() == "all":
+        if not selection.strip():
             playlists = all_playlists
         else:
             try:
-                indices = [int(x.strip()) - 1 for x in selection.split(",")]
-                playlists = [all_playlists[i] for i in indices if 0 <= i < len(all_playlists)]
-            except (ValueError, IndexError):
+                exclude_indices = {int(x.strip()) - 1 for x in selection.split(",")}
+                playlists = [
+                    pl for i, pl in enumerate(all_playlists)
+                    if i not in exclude_indices
+                ]
+            except ValueError:
                 console.print("[red]Invalid selection[/red]")
                 return
 
