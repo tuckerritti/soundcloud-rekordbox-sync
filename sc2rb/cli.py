@@ -135,6 +135,14 @@ def sync(
             console.print("[yellow]No playlists found.[/yellow]")
             return
 
+        # Compute default exclusions from previous run
+        previous_excluded_urns = set(config.excluded_playlist_urns)
+        default_excludes = [
+            str(i) for i, pl in enumerate(all_playlists, 1)
+            if pl["urn"] in previous_excluded_urns
+        ]
+        default_str = ",".join(default_excludes)
+
         # Display playlists for selection
         table = Table(title="Your SoundCloud Playlists")
         table.add_column("#", style="cyan", width=4)
@@ -143,12 +151,13 @@ def sync(
 
         for i, pl in enumerate(all_playlists, 1):
             track_count = len(pl.get("tracks", []))
-            table.add_row(str(i), pl["title"], str(track_count))
+            num_style = "dim" if pl["urn"] in previous_excluded_urns else "cyan"
+            table.add_row(f"[{num_style}]{i}[/{num_style}]", pl["title"], str(track_count))
 
         console.print(table)
         console.print("\n[dim]Enter playlist numbers to exclude (comma-separated), or press Enter to sync all[/dim]")
 
-        selection = Prompt.ask("Exclude playlists", default="")
+        selection = Prompt.ask("Exclude playlists", default=default_str)
 
         if selection.lower() == "q":
             return
@@ -169,6 +178,13 @@ def sync(
         if not playlists:
             console.print("[yellow]No playlists selected.[/yellow]")
             return
+
+        # Persist exclusions keyed by URN
+        selected_urns = {pl["urn"] for pl in playlists}
+        config.excluded_playlist_urns = [
+            pl["urn"] for pl in all_playlists if pl["urn"] not in selected_urns
+        ]
+        config.save()
 
     console.print(f"\nSyncing {len(playlists)} playlist(s)...")
 

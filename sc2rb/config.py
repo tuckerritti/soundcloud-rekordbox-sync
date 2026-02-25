@@ -34,6 +34,7 @@ class Config:
     client_id: str | None = None
     client_secret: str | None = None
     ytdlp: dict[str, Any] = field(default_factory=lambda: DEFAULT_YTDLP_CONFIG.copy())
+    excluded_playlist_urns: list[str] = field(default_factory=list)
 
     @property
     def db_path(self) -> Path:
@@ -73,6 +74,7 @@ class Config:
             "client_id": self.client_id,
             "client_secret": self.client_secret,
             "ytdlp": self.ytdlp,
+            "excluded_playlist_urns": self.excluded_playlist_urns,
         }
         self.config_path.write_text(json.dumps(data, indent=2))
 
@@ -91,6 +93,7 @@ class Config:
             client_id=data.get("client_id"),
             client_secret=data.get("client_secret"),
             ytdlp=data.get("ytdlp", DEFAULT_YTDLP_CONFIG.copy()),
+            excluded_playlist_urns=data.get("excluded_playlist_urns", []),
         )
 
 
