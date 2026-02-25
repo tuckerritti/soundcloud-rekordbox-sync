@@ -191,6 +191,11 @@ class SoundCloudClient:
         """Get all playlists for current user."""
         return self._paginate("/me/playlists")
 
+    def get_my_liked_tracks(self) -> list[dict]:
+        """Get all liked/favorited tracks for current user."""
+        items = self._paginate("/me/likes/tracks")
+        return [item["track"] if "track" in item else item for item in items]
+
     def get_playlist(self, playlist_id: str) -> dict:
         """Get a single playlist by ID."""
         return self._request("GET", f"/playlists/{playlist_id}")
