@@ -121,16 +121,6 @@ def sync(
         console.print("Fetching playlists from SoundCloud...")
         all_playlists = client.get_my_playlists()
 
-        liked_tracks = client.get_my_liked_tracks()
-        if liked_tracks:
-            all_playlists.insert(0, {
-                "urn": "soundcloud:virtual:liked-tracks",
-                "id": "liked-tracks",
-                "title": "Liked Tracks",
-                "tracks": liked_tracks,
-                "last_modified": None,
-            })
-
         if not all_playlists:
             console.print("[yellow]No playlists found.[/yellow]")
             return
